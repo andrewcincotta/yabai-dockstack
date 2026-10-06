@@ -25,4 +25,20 @@ final class VisibleSpaceFilterTests: XCTestCase {
         let wins = [win(1, space: 5, visible: false)]
         XCTAssertEqual(VisibleSpaceFilter.apply(wins).count, 1)  // safety fallback
     }
+
+    func testEmptyVisibleSpaceShowsNoWindows() {
+        // Visible space 4 has no windows; stacked windows live on space 5.
+        let wins = [win(1, space: 5, visible: false), win(2, space: 5, visible: false)]
+        XCTAssertTrue(VisibleSpaceFilter.apply(wins, visibleSpaces: [4]).isEmpty)
+    }
+
+    func testExplicitVisibleSpacesKeepOccludedStackMembers() {
+        let wins = [
+            win(1, space: 11, visible: true),
+            win(2, space: 11, visible: false),
+            win(3, space: 5, visible: false),
+        ]
+        let kept = VisibleSpaceFilter.apply(wins, visibleSpaces: [11]).map { $0.id }
+        XCTAssertEqual(Set(kept), [1, 2])
+    }
 }

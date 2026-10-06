@@ -35,7 +35,10 @@ public final class RefreshCoordinator {
     private func run() {
         let raw = client.queryWindows()
         onWindows?(raw)
-        let windows = VisibleSpaceFilter.apply(raw)
+        // Ask yabai which spaces are on screen: an empty visible space has no
+        // visible windows, so inferring from windows alone would show every stack.
+        let visibleSpaces = Set(client.querySpacesInfo().filter { $0.isVisible }.map { $0.index })
+        let windows = VisibleSpaceFilter.apply(raw, visibleSpaces: visibleSpaces)
         let stacks = StackBuilder.build(windows)
         if RefreshDiff.shouldRedraw(old: last, new: stacks) {
             last = stacks

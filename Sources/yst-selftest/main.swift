@@ -123,6 +123,8 @@ let vsfWins = [
 ]
 check(Set(VisibleSpaceFilter.apply(vsfWins).map { $0.id }) == [1, 2],
       "keeps occluded stack members on visible space, drops hidden-space windows")
+check(VisibleSpaceFilter.apply(vsfWins, visibleSpaces: [4]).isEmpty,
+      "empty visible space shows no windows from other spaces")
 
 print("YabaiLocator")
 check(YabaiLocator.detect(candidates: ["/no/a", "/no/b"], exists: { _ in false }) == nil,
