@@ -28,6 +28,9 @@ public struct AppConfig: Codable, Equatable {
     /// (e.g. yabai's external padding) so it doesn't cover the app. The indicator
     /// shrinks to fit the gap. Falls back to overlapping if the gap is too small.
     public var confineToGap: Bool
+    /// Let mouse events pass through the stack indicators to whatever is behind
+    /// them (clicking an indicator no longer focuses a window; hover tooltips off).
+    public var clickThrough: Bool
     /// Show a window-preview popover when hovering a Dock app icon
     /// (needs Accessibility + Screen Recording).
     public var dockPreview: Bool
@@ -58,6 +61,7 @@ public struct AppConfig: Codable, Equatable {
         showBackground: true,
         backgroundColor: "#1E1E1ECC",
         confineToGap: true,
+        clickThrough: false,
         dockPreview: true,
         language: "auto",
         switcherEnabled: true,

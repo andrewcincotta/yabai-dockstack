@@ -13,7 +13,7 @@ public final class IndicatorPanel: NSPanel {
         backgroundColor = .clear
         isOpaque = false
         hasShadow = false
-        ignoresMouseEvents = false
+        ignoresMouseEvents = config.clickThrough
         // Stay on the space where created (do NOT join all spaces), so a stack's
         // indicator only shows on the space the stack actually lives on. Panels are
         // recreated per space on space_changed, so they always land on the right one.

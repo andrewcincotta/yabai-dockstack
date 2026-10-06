@@ -22,6 +22,12 @@ final class AppConfigTests: XCTestCase {
         XCTAssertTrue(AppConfig.load(from: nil).dockPreview)
     }
 
+    func testClickThroughDefaultsOffAndLoads() {
+        XCTAssertFalse(AppConfig.load(from: nil).clickThrough)
+        let c = AppConfig.load(from: #"{"clickThrough": true}"#.data(using: .utf8))
+        XCTAssertTrue(c.clickThrough)
+    }
+
     func testGarbageFallsBackToDefaults() {
         let c = AppConfig.load(from: "not json".data(using: .utf8))
         XCTAssertEqual(c, AppConfig.defaults)

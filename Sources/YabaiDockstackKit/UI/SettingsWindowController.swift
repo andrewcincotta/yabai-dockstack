@@ -31,6 +31,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let backgroundCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let backgroundWell = NSColorWell()
     private let confineCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
+    private let clickThroughCheck = NSButton(checkboxWithTitle: "", target: nil, action: nil)
     private let fullWidthPopup = NSPopUpButton()
     private let debounceField = NSTextField()
     private let pollField = NSTextField()
@@ -143,6 +144,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         backgroundWell.target = self; backgroundWell.action = #selector(changed)
         backgroundCheck.target = self; backgroundCheck.action = #selector(changed)
         confineCheck.target = self; confineCheck.action = #selector(changed)
+        clickThroughCheck.target = self; clickThroughCheck.action = #selector(changed)
         dockPreviewCheck.target = self; dockPreviewCheck.action = #selector(changed)
         loginCheck.target = self; loginCheck.action = #selector(loginChanged)
 
@@ -206,6 +208,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
 
         backgroundCheck.title = L10n.t("ui.appearance.showBackground")
         confineCheck.title = L10n.t("ui.appearance.confine")
+        clickThroughCheck.title = L10n.t("ui.appearance.clickThrough")
         dockPreviewCheck.title = L10n.t("ui.appearance.dockPreview")
         loginCheck.title = L10n.t("ui.appearance.login")
 
@@ -228,6 +231,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
             [NSGridCell.emptyContentView, backgroundCheck],
             row(L10n.t("ui.appearance.backgroundColor"), backgroundWell),
             [NSGridCell.emptyContentView, confineCheck],
+            [NSGridCell.emptyContentView, clickThroughCheck],
             [NSGridCell.emptyContentView, dockPreviewCheck],
             row(L10n.t("ui.appearance.fullWidthSide"), fullWidthPopup),
             row(L10n.t("ui.appearance.debounce"), debounceField),
@@ -382,6 +386,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         backgroundCheck.state = config.showBackground ? .on : .off
         backgroundWell.color = NSColor.fromHex(config.backgroundColor, fallback: NSColor(white: 0, alpha: 0.8))
         confineCheck.state = config.confineToGap ? .on : .off
+        clickThroughCheck.state = config.clickThrough ? .on : .off
         dockPreviewCheck.state = config.dockPreview ? .on : .off
         fullWidthPopup.selectItem(at: config.fullWidthSide == "right" ? 1 : 0)
         debounceField.integerValue = Int((config.debounceSeconds * 1000).rounded())
@@ -412,6 +417,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         config.showBackground = backgroundCheck.state == .on
         config.backgroundColor = backgroundWell.color.hexString
         config.confineToGap = confineCheck.state == .on
+        config.clickThrough = clickThroughCheck.state == .on
         config.dockPreview = dockPreviewCheck.state == .on
         config.fullWidthSide = fullWidthPopup.indexOfSelectedItem == 1 ? "right" : "left"
         // ms -> seconds, with sane floors

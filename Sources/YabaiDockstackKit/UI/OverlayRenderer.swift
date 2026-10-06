@@ -11,6 +11,7 @@ public final class OverlayRenderer {
         self.config = config
         for panel in panels.values {
             panel.indicatorView.config = config
+            panel.ignoresMouseEvents = config.clickThrough
         }
     }
 
@@ -42,6 +43,7 @@ public final class OverlayRenderer {
                 panel.setFrame(cocoa, display: true)
                 panel.indicatorView.frame = CGRect(origin: .zero, size: cocoa.size)
                 panel.indicatorView.config = config
+                panel.ignoresMouseEvents = config.clickThrough
                 panel.indicatorView.stack = stack
             } else {
                 let panel = IndicatorPanel(stack: stack, config: config, frame: cocoa)
