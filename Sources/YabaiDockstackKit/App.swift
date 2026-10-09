@@ -141,7 +141,7 @@ public enum YabaiDockstack {
         let menu = MenuBarController()
         let listener = SignalListener(
             socketPath: config.socketPath,
-            onPoke: { coordinator.requestRefresh() },
+            onPoke: { coordinator.requestRefresh(force: true) },
             onCommand: { cmd in
                 if cmd == "show-menu" {
                     DispatchQueue.main.async { menu.openMenu() }
@@ -236,7 +236,14 @@ public enum YabaiDockstack {
         // observe display changes
         NotificationCenter.default.addObserver(
             forName: NSApplication.didChangeScreenParametersNotification,
-            object: nil, queue: .main) { _ in coordinator.requestRefresh() }
+            object: nil, queue: .main) { _ in
+                coordinator.requestRefresh(force: true)
+                // yabai can take a moment to re-tile after a display/resolution
+                // change, so re-place again once its window frames settle.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                    coordinator.requestRefresh(force: true)
+                }
+            }
 
         ensureDockController()
         ensureSwitcherTap()

@@ -6,6 +6,9 @@ public final class RefreshCoordinator {
     private let onStacks: ([Stack]) -> Void
     private let queue = DispatchQueue(label: "refresh.coordinator")
     private var pending: DispatchWorkItem?
+    /// Set when any request since the last run asked to bypass the diff; survives
+    /// debounce so a forced request isn't lost to a later unforced one.
+    private var pendingForce = false
     private var pollTimer: Timer?
     private var started = false
     private var last: [Stack] = []
@@ -25,10 +28,14 @@ public final class RefreshCoordinator {
         if started { schedulePollTimer() }
     }
 
-    public func requestRefresh() {
+    /// - Parameter force: redraw even if the stacks look unchanged. Used for
+    ///   explicit `--refresh` pokes and display changes, where screen geometry
+    ///   (not captured in the stack data) may have changed.
+    public func requestRefresh(force: Bool = false) {
         pending?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.run() }
         pending = work
+        if force { queue.async { [weak self] in self?.pendingForce = true } }
         queue.asyncAfter(deadline: .now() + config.debounceSeconds, execute: work)
     }
 
@@ -40,7 +47,9 @@ public final class RefreshCoordinator {
         let visibleSpaces = Set(client.querySpacesInfo().filter { $0.isVisible }.map { $0.index })
         let windows = VisibleSpaceFilter.apply(raw, visibleSpaces: visibleSpaces)
         let stacks = StackBuilder.build(windows)
-        if RefreshDiff.shouldRedraw(old: last, new: stacks) {
+        let force = pendingForce
+        pendingForce = false
+        if force || RefreshDiff.shouldRedraw(old: last, new: stacks) {
             last = stacks
             DispatchQueue.main.async { [weak self] in self?.onStacks(stacks) }
         }
