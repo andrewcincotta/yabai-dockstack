@@ -205,15 +205,6 @@ let oneImg = cgctx.makeImage()!
 tcache.put(1, oneImg); tcache.put(2, oneImg); _ = tcache.get(1); tcache.put(3, oneImg)
 check(tcache.contains(1) && !tcache.contains(2) && tcache.contains(3), "ThumbnailCache evicts LRU")
 
-print("ManagedRegion")
-let mrOut = ManagedRegion.replace(in: "echo hi\n", with: "A\nB")
-check(ManagedRegion.extract(from: mrOut) == "A\nB", "extract round-trips appended body")
-check(mrOut.hasPrefix("echo hi\n"), "freeform preserved before region")
-let mr2 = ManagedRegion.replace(in: mrOut + "AFTER\n", with: "C")
-check(mr2.hasSuffix("AFTER\n"), "freeform preserved after region")
-check(ManagedRegion.extract(from: mr2) == "C", "region body replaced")
-check(ManagedRegion.extract(from: "no markers") == nil, "nil when no markers")
-
 print("Hotkey")
 check(Hotkey.parse("alt + cmd - left") == Hotkey(mods: [.alt, .cmd], key: "left"), "parse basic")
 let hk = Hotkey(mods: [.cmd, .alt, .shift], key: "r")
@@ -222,79 +213,6 @@ check(Hotkey.parse(hk.skhdString) == hk, "round-trips")
 check(Hotkey.parse("alt + cmd - 0x2A")?.skhdString == "alt + cmd - 0x2A", "keycode preserved")
 check(Hotkey.parse("cmd -") == nil, "empty key -> nil")
 check(Hotkey(mods: [.cmd, .alt], key: "left").displayString == "⌥⌘←", "display glyphs")
-
-print("YabaiManagedConfig")
-var ys = YabaiSettings.defaults
-ys.rules = [WindowRule(app: "Finder", mode: .float), WindowRule(app: "iTerm2", mode: .manage)]
-let yText = YabaiManagedConfig.generate(ys)
-check(yText.contains("yabai -m config layout bsp"), "layout emitted")
-check(yText.contains(#"app="Finder" manage=off"#), "float rule -> manage=off")
-check(yText.contains(#"app="iTerm2" manage=on"#), "manage rule -> manage=on")
-check(YabaiManagedConfig.parse(yText) == ys, "yabai settings round-trip")
-var floatMode = YabaiSettings.defaults; floatMode.layout = .float
-floatMode.rules = [WindowRule(app: "Finder", mode: .float)]
-let floatText = YabaiManagedConfig.generate(floatMode)
-check(floatText.contains(#"app=".*" manage=off"#), "float emits global manage=off catch-all (floats all windows)")
-check(YabaiManagedConfig.parse(floatText) == floatMode, "float round-trips (.float + real rules, synthetic .* skipped)")
-var off = YabaiSettings.defaults; off.layout = .off
-off.rules = [WindowRule(app: "Finder", mode: .float)]
-let offText = YabaiManagedConfig.generate(off)
-check(offText.contains("yabai -m config layout float"), "off emits float layout")
-check(!offText.contains(#"app=".*""#), "off has no synthetic catch-all (native feel)")
-check(YabaiManagedConfig.parse(offText) == off, "off round-trips")
-check(YabaiManagedConfig.parse("") == YabaiSettings.defaults, "empty -> defaults")
-
-print("ShortcutCatalog")
-let ids = ShortcutCatalog.all.map { $0.id }
-check(Set(ids).count == ids.count, "catalog ids unique")
-check(ShortcutCatalog.all.allSatisfy { ShortcutGroup.order.contains($0.group) }, "all groups known")
-check(ShortcutCatalog.action(id: "stack-west") != nil, "stack-west present")
-let hkX = Hotkey(mods: [.cmd], key: "x")
-let conf = ShortcutConflicts.find([
-    ShortcutBinding(actionID: "a", enabled: true, hotkey: hkX),
-    ShortcutBinding(actionID: "b", enabled: true, hotkey: hkX),
-    ShortcutBinding(actionID: "d", enabled: false, hotkey: hkX),
-])
-check(conf[hkX].map { Set($0) } == Set(["a", "b"]), "conflict finds enabled pair, ignores disabled")
-
-print("SkhdManagedConfig")
-let sb = [
-    ShortcutBinding(actionID: "focus-left", enabled: true, hotkey: Hotkey(mods: [.alt, .cmd], key: "left")),
-    ShortcutBinding(actionID: "balance", enabled: true, hotkey: Hotkey(mods: [.alt, .cmd], key: "0x2A")),
-    ShortcutBinding(actionID: "rotate-cw", enabled: false, hotkey: Hotkey(mods: [.alt, .cmd], key: "r")),
-]
-let sText = SkhdManagedConfig.generate(sb, catalog: ShortcutCatalog.all, scriptsDir: "/S")
-check(sText.contains("alt + cmd - 0x2A : yabai -m space --balance"), "binding line emitted")
-check(!sText.contains("rotate"), "disabled binding skipped")
-let sbParsed = SkhdManagedConfig.parse(sText, catalog: ShortcutCatalog.all, scriptsDir: "/S")
-check(sbParsed == sb.filter { $0.enabled }, "skhd round-trip (enabled subset)")
-check(SkhdManagedConfig.generate(
-    [ShortcutBinding(actionID: "toggle-show-desktop", enabled: true, hotkey: Hotkey(mods: [.cmd], key: "f3"))],
-    catalog: ShortcutCatalog.all, scriptsDir: "/opt/s").contains("/opt/s/taggleShowHideDesktop.sh"),
-    "script token substituted")
-
-print("ConfigPaths")
-let tmpDir = NSTemporaryDirectory() + "yst-paths/"
-try? FileManager.default.createDirectory(atPath: tmpDir, withIntermediateDirectories: true)
-let existing = tmpDir + "b"
-FileManager.default.createFile(atPath: existing, contents: Data())
-check(ConfigPaths.resolve(candidates: [tmpDir + "a", existing]) == existing, "picks first existing")
-check(ConfigPaths.resolve(candidates: ["~/.nope-xyz"]) == ("~/.nope-xyz" as NSString).expandingTildeInPath, "falls back to first")
-
-print("ConfigFileWriter")
-let wPath = NSTemporaryDirectory() + "yst-writer.rc"
-try? "echo freeform\n".write(toFile: wPath, atomically: true, encoding: .utf8)
-let writer = ConfigFileWriter(path: wPath)
-try? writer.writeManagedRegion("LINE1")
-let wOut = (try? String(contentsOfFile: wPath, encoding: .utf8)) ?? ""
-check(wOut.contains("echo freeform"), "freeform preserved on write")
-check(ManagedRegion.extract(from: wOut) == "LINE1", "region written")
-try? writer.writeManagedRegion("LINE2")
-check(ManagedRegion.extract(from: (try? String(contentsOfFile: wPath, encoding: .utf8)) ?? "") == "LINE2", "region replaced not appended")
-try? writer.restoreBackup()
-check(((try? String(contentsOfFile: wPath, encoding: .utf8)) ?? "").contains("LINE1"), "restore brings back prior (pre-LINE2) state")
-try? FileManager.default.removeItem(atPath: wPath)
-try? FileManager.default.removeItem(atPath: writer.backupPath)
 
 print("ScriptInstaller")
 let sDir = NSTemporaryDirectory() + "yst-scripts/"
@@ -305,126 +223,6 @@ do {
 } catch { check(false, "ScriptInstaller.install threw: \(error)") }
 try? FileManager.default.removeItem(atPath: sDir)
 
-print("DefaultTemplate")
-check(DefaultTemplate.defaultBindings().count == ShortcutCatalog.all.count, "default bindings cover catalog")
-check(DefaultTemplate.defaultYabaiSettings().rules.contains { $0.app == "Finder" }, "default rules include Finder")
-let tPath = NSTemporaryDirectory() + "yst-tmpl.rc"
-try? FileManager.default.removeItem(atPath: tPath)
-let tw = ConfigFileWriter(path: tPath)
-check(DefaultTemplate.ensureManagedRegion(in: tw, body: "SEED") == true, "seeds when no region")
-check(DefaultTemplate.ensureManagedRegion(in: tw, body: "X") == false, "adopts when region exists")
-check(ManagedRegion.extract(from: tw.currentText()) == "SEED", "seed body preserved on adopt")
-try? FileManager.default.removeItem(atPath: tPath)
-try? FileManager.default.removeItem(atPath: tw.backupPath)
-
-print("ConfigEngine")
-let engY = NSTemporaryDirectory() + "yst-eng.rc"
-try? FileManager.default.removeItem(atPath: engY)
-let eng = ConfigEngine(yabaiPath: "/usr/bin/true", skhdPath: "/usr/bin/true",
-                       yabaiConfigPath: engY, skhdConfigPath: engY + ".s", scriptsDir: "/S")
-var es = DefaultTemplate.defaultYabaiSettings(); es.gap = 17
-try? eng.saveYabai(es)
-check(eng.loadYabaiSettings().gap == 17, "engine yabai round-trip")
-try? eng.saveSkhd([ShortcutBinding(actionID: "balance", enabled: true, hotkey: Hotkey(mods: [.alt, .cmd], key: "0x2A"))])
-let lb = eng.loadBindings()
-check(lb.count == ShortcutCatalog.all.count, "loadBindings returns a row per action")
-check(lb.first { $0.actionID == "balance" }?.enabled == true, "saved binding enabled")
-check(lb.first { $0.actionID == "rotate-cw" }?.enabled == false, "unsaved binding is disabled row")
-check(eng.applyYabai().ok, "applyYabai runs (/bin/true)")
-try? FileManager.default.removeItem(atPath: engY)
-try? FileManager.default.removeItem(atPath: engY + ".s")
-
-// Fix D: .float layout round-trip
-print("YabaiManagedConfig float round-trip")
-do {
-    var floatS = YabaiSettings.defaults; floatS.layout = .float
-    check(YabaiManagedConfig.parse(YabaiManagedConfig.generate(floatS)) == floatS, ".float layout round-trips")
-}
-
-// Fix D: enabled+nil-hotkey excluded from conflicts
-print("ShortcutConflicts nil-hotkey exclusion")
-do {
-    let hkNil = Hotkey(mods: [.cmd], key: "x")
-    let nilBindings = [
-        ShortcutBinding(actionID: "a", enabled: true, hotkey: hkNil),
-        ShortcutBinding(actionID: "x", enabled: true, hotkey: nil),
-    ]
-    let nilConflicts = ShortcutConflicts.find(nilBindings)
-    check(nilConflicts[hkNil] == nil, "single hotkey binding with nil-hotkey sibling is not a conflict")
-    check(!nilConflicts.values.flatMap { $0 }.contains("x"), "nil-hotkey binding absent from conflicts output")
-}
-
-// Fix D: restoreBackup throws when no backup exists
-print("ConfigFileWriter restoreBackup no-bak throws")
-do {
-    let noBackupWriter = ConfigFileWriter(path: NSTemporaryDirectory() + "yst-no-bak-\(Int.random(in: 1000...9999)).rc")
-    var didThrow = false
-    do { try noBackupWriter.restoreBackup() } catch { didThrow = true }
-    check(didThrow, "restoreBackup throws when no .bak file exists")
-}
-
-// Fix D: shipped defaults do not self-conflict
-print("DefaultTemplate no self-conflict")
-check(ShortcutConflicts.find(DefaultTemplate.defaultBindings()).isEmpty, "default bindings have no hotkey conflicts")
-
-// Fix B: loadBindings survives duplicate-actionID region
-print("ConfigEngine duplicate-actionID region survives")
-do {
-    let dupPath = NSTemporaryDirectory() + "yst-dup-\(Int.random(in: 1000...9999)).rc"
-    let dupBody = "alt + cmd - 0x2A : yabai -m space --balance\nctrl - b : yabai -m space --balance"
-    let dupText = ManagedRegion.replace(in: "", with: dupBody)
-    try? dupText.write(toFile: dupPath, atomically: true, encoding: .utf8)
-    let dupEng = ConfigEngine(yabaiPath: "/usr/bin/true", skhdPath: "/usr/bin/true",
-                              yabaiConfigPath: dupPath + ".y", skhdConfigPath: dupPath, scriptsDir: "/S")
-    let dupLoaded = dupEng.loadBindings()
-    check(dupLoaded.count == ShortcutCatalog.all.count, "loadBindings with duplicate-actionID region returns row per action")
-    check(dupLoaded.first { $0.actionID == "balance" }?.enabled == true, "balance enabled despite duplicate binding")
-    try? FileManager.default.removeItem(atPath: dupPath)
-}
-
-// Fix C: hasMalformedMarkers
-print("ManagedRegion hasMalformedMarkers")
-do {
-    let twoBegins = ManagedRegion.beginLine + "\nFREEFORM-A\n" + ManagedRegion.beginLine + "\nX\n" + ManagedRegion.endLine + "\n"
-    check(ManagedRegion.hasMalformedMarkers(in: twoBegins), "two BEGIN markers -> malformed")
-    let endFirst = ManagedRegion.endLine + "\n" + ManagedRegion.beginLine + "\n"
-    check(ManagedRegion.hasMalformedMarkers(in: endFirst), "END before BEGIN -> malformed")
-    check(!ManagedRegion.hasMalformedMarkers(in: ""), "empty -> not malformed")
-    let cleanRegion = ManagedRegion.replace(in: "", with: "BODY")
-    check(!ManagedRegion.hasMalformedMarkers(in: cleanRegion), "one ordered pair -> not malformed")
-}
-
-// Fix C: writeManagedRegion throws and preserves content on malformed markers
-print("ConfigFileWriter refuses malformed-marker file")
-do {
-    let mPath = NSTemporaryDirectory() + "yst-malformed-\(Int.random(in: 1000...9999)).rc"
-    let malformed = ManagedRegion.beginLine + "\nFREEFORM-A\n" + ManagedRegion.beginLine + "\nX\n" + ManagedRegion.endLine + "\n"
-    try? malformed.write(toFile: mPath, atomically: true, encoding: .utf8)
-    let mWriter = ConfigFileWriter(path: mPath)
-    var mDidThrow = false
-    do { try mWriter.writeManagedRegion("NEW") } catch { mDidThrow = true }
-    check(mDidThrow, "writeManagedRegion throws on malformed markers")
-    let mAfter = (try? String(contentsOfFile: mPath, encoding: .utf8)) ?? ""
-    check(mAfter.contains("FREEFORM-A"), "freeform preserved after refused write")
-    try? FileManager.default.removeItem(atPath: mPath)
-}
-
-print("ConfigEngine seed-aware")
-let edPath = NSTemporaryDirectory() + "yst-eng-def.rc"
-try? FileManager.default.removeItem(atPath: edPath)
-try? FileManager.default.removeItem(atPath: edPath + ".s")
-let ed = ConfigEngine(yabaiPath: "/usr/bin/true", skhdPath: "/usr/bin/true",
-                      yabaiConfigPath: edPath, skhdConfigPath: edPath + ".s", scriptsDir: "/S")
-check(ed.hasYabaiRegion() == false, "no yabai region on fresh file")
-check(ed.loadYabaiSettingsOrDefault().rules.contains { $0.app == "Finder" }, "or-default uses curated yabai default")
-check(ed.loadBindingsOrDefault().allSatisfy { $0.enabled }, "or-default bindings all enabled")
-var eds = YabaiSettings.defaults; eds.gap = 99
-try? ed.saveYabai(eds)
-check(ed.hasYabaiRegion() == true, "region present after save")
-check(ed.loadYabaiSettingsOrDefault().gap == 99, "or-default uses region when present")
-try? FileManager.default.removeItem(atPath: edPath)
-try? FileManager.default.removeItem(atPath: edPath + ".s")
-
 print("KeyCodeMap")
 check(KeyCodeMap.skhdKey(forKeyCode: 0x7B, chars: nil) == "left", "keycode 0x7B -> left")
 check(KeyCodeMap.skhdKey(forKeyCode: 0x31, chars: " ") == "space", "keycode 0x31 -> space")
@@ -432,94 +230,6 @@ check(KeyCodeMap.skhdKey(forKeyCode: 0x0F, chars: "R") == "r", "letter lowercase
 check(KeyCodeMap.skhdKey(forKeyCode: 0x2A, chars: "|") == "0x2A", "unknown -> hex fallback (uppercase)")
 check(KeyCodeMap.skhdKey(forKeyCode: 0x63, chars: nil) == "f3", "keycode 0x63 -> f3")
 check(KeyCodeMap.skhdKey(forKeyCode: 0x2B, chars: ",") == "0x2B", "hex keycodes emit uppercase (skhd requirement)")
-
-print("ShortcutSections")
-let secs = ShortcutSections.build(DefaultTemplate.defaultBindings())
-check(secs.map { $0.group } == ShortcutGroup.order, "sections in group order")
-check(secs.reduce(0) { $0 + $1.rows.count } == ShortcutCatalog.all.count, "rows cover catalog")
-check(ShortcutSections.build([]).flatMap { $0.rows }.allSatisfy { !$0.binding.enabled && $0.binding.hotkey == nil }, "missing -> disabled+unbound rows")
-let chk = Hotkey(mods: [.alt, .cmd], key: "x")
-check(ShortcutSections.conflictingActionIDs([
-    ShortcutBinding(actionID: "balance", enabled: true, hotkey: chk),
-    ShortcutBinding(actionID: "toggle-fullscreen", enabled: true, hotkey: chk),
-]) == Set(["balance", "toggle-fullscreen"]), "conflicting action ids")
-
-print("FreeformImporter helpers")
-check(FreeformImporter.normalizeCommand("sh ~/.config/yabai/scripts/focusWindow.sh left")
-      == "sh @S@focusWindow.sh left", "normalize collapses tilde script dir")
-check(FreeformImporter.normalizeCommand("sh ${SCRIPTS}/focusWindow.sh left")
-      == "sh @S@focusWindow.sh left", "normalize collapses ${SCRIPTS}")
-check(FreeformImporter.parseSkhdLine("cmd - f3: sh x")?.hotkey == Hotkey(mods: [.cmd], key: "f3"),
-      "parseSkhdLine lenient colon")
-check(FreeformImporter.parseSkhdLine("# comment") == nil, "parseSkhdLine skips comments")
-check(FreeformImporter.parseSkhdLine("cmd - n : a && \\") == nil, "parseSkhdLine skips continuation")
-check(FreeformImporter.parseSkhdLine("shift + cmd - g : yabai -m window --grid 2:2:0:0:1:1")?.command == "yabai -m window --grid 2:2:0:0:1:1", "parseSkhdLine keeps colon in command (split on first colon)")
-
-print("FreeformImporter.importSkhd")
-let skFile = "cmd - f3: sh ~/.config/yabai/scripts/taggleShowHideDesktop.sh\ncmd - x : custom jq thing\n"
-let skRes = FreeformImporter.importSkhd(fileText: skFile,
-    current: [ShortcutBinding(actionID: "toggle-show-desktop", enabled: true, hotkey: Hotkey(mods: [.cmd], key: "4"))],
-    catalog: ShortcutCatalog.all, scriptsDir: "/Users/me/.config/yabai-dockstack/scripts")
-check(skRes.importedCount == 1, "importSkhd matches one binding")
-check(skRes.bindings.first { $0.actionID == "toggle-show-desktop" }?.hotkey == Hotkey(mods: [.cmd], key: "f3"),
-      "importSkhd: imported value wins")
-check(skRes.newText.contains("# [yabai-dockstack imported] cmd - f3:"), "importSkhd comments matched line")
-check(skRes.newText.contains("cmd - x : custom jq thing"), "importSkhd leaves unmatched line")
-
-print("FreeformImporter.importYabai")
-let ybFile = "yabai -m config layout bsp\nyabai -m config window_gap 6\nyabai -m rule --add app=\"Finder\" manage=off sub-layer=normal\nyabai -m rule --add app=\".*\" sub-layer=normal\necho done\n"
-let ybRes = FreeformImporter.importYabai(fileText: ybFile, current: YabaiSettings.defaults)
-check(ybRes.settings.layout == .bsp && ybRes.settings.gap == 6, "importYabai reads layout/gap")
-check(ybRes.settings.rules == [WindowRule(app: "Finder", mode: .float)], "importYabai imports Finder, skips .*")
-check(ybRes.importedCount == 3, "importYabai count (layout, gap, Finder)")
-check(ybRes.newText.contains("echo done"), "importYabai leaves shell untouched")
-let ybOff = FreeformImporter.importYabai(fileText: "yabai -m config layout off\nyabai -m config layout stack", current: YabaiSettings.defaults)
-check(ybOff.importedCount == 0 && ybOff.settings.layout == YabaiSettings.defaults.layout, "importYabai skips layout off/stack")
-let ybDup = FreeformImporter.importYabai(fileText: "yabai -m rule --add app=\"Finder\" manage=off sub-layer=normal\nyabai -m rule --add app=\"Finder\" manage=on sub-layer=normal", current: YabaiSettings.defaults)
-check(ybDup.settings.rules == [WindowRule(app: "Finder", mode: .manage)], "importYabai rule de-dupe later wins")
-
-print("ConfigEngine import")
-let impP = NSTemporaryDirectory() + "yst-imp.skhdrc"
-try? "cmd - f3: sh ~/.config/yabai/scripts/taggleShowHideDesktop.sh\n".write(toFile: impP, atomically: true, encoding: .utf8)
-let impE = ConfigEngine(yabaiPath: "/usr/bin/true", skhdPath: "/usr/bin/true",
-                        yabaiConfigPath: impP + ".y", skhdConfigPath: impP,
-                        scriptsDir: "/Users/me/.config/yabai-dockstack/scripts")
-check((try? impE.importSkhd()) == 1, "engine importSkhd migrates one binding")
-let impText = (try? String(contentsOfFile: impP, encoding: .utf8)) ?? ""
-check(impText.contains("# [yabai-dockstack imported] cmd - f3:"), "engine import comments original")
-check(ManagedRegion.extract(from: impText) != nil, "engine import creates managed region")
-check(impE.loadBindings().first { $0.actionID == "toggle-show-desktop" }?.hotkey == Hotkey(mods: [.cmd], key: "f3"),
-      "engine import: action now bound to imported key")
-try? FileManager.default.removeItem(atPath: impP)
-try? FileManager.default.removeItem(atPath: impP + ".bak")
-try? FileManager.default.removeItem(atPath: impP + ".y")
-
-let impY = NSTemporaryDirectory() + "yst-impy.yabairc"
-try? FileManager.default.removeItem(atPath: impY)
-try? "yabai -m config window_gap 7\n".write(toFile: impY, atomically: true, encoding: .utf8)
-let impYE = ConfigEngine(yabaiPath: "/usr/bin/true", skhdPath: "/usr/bin/true",
-                         yabaiConfigPath: impY, skhdConfigPath: impY + ".s", scriptsDir: "/S")
-check((try? impYE.importYabai()) == 1, "engine importYabai migrates one setting")
-check(impYE.loadYabaiSettings().gap == 7, "engine importYabai: gap reflects imported value")
-try? FileManager.default.removeItem(atPath: impY)
-try? FileManager.default.removeItem(atPath: impY + ".bak")
-
-let idemP = NSTemporaryDirectory() + "yst-imp-idem.skhdrc"
-try? "cmd - f3: sh ~/.config/yabai/scripts/taggleShowHideDesktop.sh\n".write(toFile: idemP, atomically: true, encoding: .utf8)
-let idemE = ConfigEngine(yabaiPath: "/usr/bin/true", skhdPath: "/usr/bin/true",
-                         yabaiConfigPath: idemP + ".y", skhdConfigPath: idemP,
-                         scriptsDir: "/Users/me/.config/yabai-dockstack/scripts")
-_ = try? idemE.importSkhd()
-check((try? idemE.importSkhd()) == 0, "importSkhd idempotent (second run imports nothing)")
-try? FileManager.default.removeItem(atPath: idemP)
-try? FileManager.default.removeItem(atPath: idemP + ".bak")
-
-print("Shortcut symbols")
-check(ShortcutCatalog.all.allSatisfy { !$0.symbol.isEmpty }, "every action has a symbol")
-let badSymbols = ShortcutCatalog.all.filter {
-    NSImage(systemSymbolName: $0.symbol, accessibilityDescription: nil) == nil
-}.map(\.id)
-check(badSymbols.isEmpty, "all SF Symbol names valid (bad: \(badSymbols))")
 
 print("SpaceTravelPlanner")
 let stpSpaces: [SpaceInfo] = [
@@ -592,8 +302,6 @@ check(L10n.resolve(.zhHant, preferred: ["ja"]) == .zhHant, "explicit wins over p
 check(Set(L10nStrings.en.keys) == Set(L10nStrings.zhHant.keys)
       && Set(L10nStrings.en.keys) == Set(L10nStrings.ja.keys), "table key parity")
 check(!L10nStrings.en.values.contains(""), "no empty en values")
-check(ShortcutCatalog.all.allSatisfy { L10nStrings.en["action.\($0.id)"] != nil }, "catalog title coverage")
-check(ShortcutGroup.order.allSatisfy { L10nStrings.en["group.\($0)"] != nil }, "group coverage")
 L10n.current = .ja
 check(L10n.t("ui.apply") == "適用", "ja lookup")
 L10n.current = .en
@@ -734,8 +442,6 @@ do {
     let old = AppConfig.load(from: #"{"style":"flag"}"#.data(using: .utf8))
     check(old.switcherEnabled && old.switcherHotkeyAll == "alt - tab",
           "pre-switcher config gains switcher defaults")
-    check(ShortcutCatalog.action(id: "open-window-switcher") != nil,
-          "open-window-switcher action in catalog")
     check(ScriptInstaller.scriptNames.contains("openWindowSwitcher.sh"),
           "switcher socket script ships")
 }

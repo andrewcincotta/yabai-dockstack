@@ -32,15 +32,6 @@ final class L10nTests: XCTestCase {
         }
     }
 
-    func testCatalogCoverage() {
-        for action in ShortcutCatalog.all {
-            XCTAssertNotNil(L10nStrings.en["action.\(action.id)"], "missing action.\(action.id)")
-        }
-        for group in ShortcutGroup.order {
-            XCTAssertNotNil(L10nStrings.en["group.\(group)"], "missing group.\(group)")
-        }
-    }
-
     func testLookupAndFallback() {
         L10n.current = .zhHant
         XCTAssertEqual(L10n.t("ui.apply"), "套用")

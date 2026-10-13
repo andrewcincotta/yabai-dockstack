@@ -6,7 +6,7 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private var window: NSWindow?
     private var tabView: NSTabView?
 
-    /// Select a tab by index (0=Appearance, 1=yabai, 2=Keyboard, 3=Switcher). Builds the window first.
+    /// Select a tab by index (0=Appearance, 1=Switcher). Builds the window first.
     public func selectTab(at index: Int) {
         if window == nil { build() }
         if let tv = tabView, index >= 0, index < tv.numberOfTabViewItems {
@@ -54,11 +54,6 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let srButton = NSButton(title: "", target: nil, action: nil)
     private let permissionBanner = NSView()
     private var permTimer: Timer?
-
-    /// Set by the app BEFORE calling show() — enables the yabai and Keyboard tabs.
-    public var configEngine: ConfigEngine?
-    public var yabaiRawPath: String?
-    public var skhdRawPath: String?
 
     /// Set by the app: trigger the request + open the right System Settings pane.
     public var onGrantAccessibility: (() -> Void)?
@@ -282,24 +277,6 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         appearanceItem.label = L10n.t("ui.tab.appearance")
         appearanceItem.view = appearancePane
 
-        // --- yabai tab ---
-        let yabaiItem = NSTabViewItem()
-        yabaiItem.label = L10n.t("ui.tab.yabai")
-        if let engine = configEngine {
-            yabaiItem.view = YabaiSettingsPaneView(engine: engine, rawFilePath: yabaiRawPath ?? "")
-        } else {
-            yabaiItem.view = makePlaceholder(L10n.t("ui.yabai.notConfigured"))
-        }
-
-        // --- Keyboard tab ---
-        let keyboardItem = NSTabViewItem()
-        keyboardItem.label = L10n.t("ui.tab.keyboard")
-        if let engine = configEngine {
-            keyboardItem.view = ShortcutsPaneView(engine: engine, rawFilePath: skhdRawPath ?? "")
-        } else {
-            keyboardItem.view = makePlaceholder(L10n.t("ui.keyboard.notConfigured"))
-        }
-
         // --- Switcher tab ---
         switcherAppearancePopup.removeAllItems()
         switcherAppearancePopup.addItems(withTitles: [
@@ -353,26 +330,12 @@ public final class SettingsWindowController: NSObject, NSWindowDelegate {
         // --- NSTabView as the window's content view ---
         let tabView = NSTabView()
         tabView.addTabViewItem(appearanceItem)
-        tabView.addTabViewItem(yabaiItem)
-        tabView.addTabViewItem(keyboardItem)
         tabView.addTabViewItem(switcherItem)
         self.tabView = tabView
 
         let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
         window?.title = L10n.t("ui.windowTitle") + (version.map { " (v\($0))" } ?? "")
         window?.contentView = tabView
-    }
-
-    private func makePlaceholder(_ text: String) -> NSView {
-        let view = NSView()
-        let label = NSTextField(labelWithString: text)
-        label.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            label.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-        ])
-        return view
     }
 
     private func syncControls() {

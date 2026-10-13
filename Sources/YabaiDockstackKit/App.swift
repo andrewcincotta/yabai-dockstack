@@ -61,15 +61,6 @@ public enum YabaiDockstack {
             return
         }
 
-        // Resolve skhd binary and config paths; build the config engine.
-        let skhdPath = ["/opt/homebrew/bin/skhd", "/usr/local/bin/skhd"]
-            .first { FileManager.default.fileExists(atPath: $0) } ?? "/opt/homebrew/bin/skhd"
-        let yabaiRcPath = ConfigPaths.resolve(candidates: ConfigPaths.yabaiCandidates)
-        let skhdRcPath = ConfigPaths.resolve(candidates: ConfigPaths.skhdCandidates)
-        let configEngine = ConfigEngine(yabaiPath: resolvedYabai, skhdPath: skhdPath,
-                                        yabaiConfigPath: yabaiRcPath, skhdConfigPath: skhdRcPath,
-                                        scriptsDir: ConfigPaths.scriptsDir)
-
         // Write a default config file on first run so it's discoverable/editable.
         let expandedConfig = (configPath as NSString).expandingTildeInPath
         if !FileManager.default.fileExists(atPath: expandedConfig) {
@@ -83,12 +74,6 @@ public enum YabaiDockstack {
             do { try ScriptInstaller.install(to: ConfigPaths.scriptsDir) }
             catch { NSLog("yabai-dockstack: helper script install failed: \(error)") }
         }
-
-        // One-time migration for existing users: pull recognizable hand-written bindings
-        // into the managed region. No region yet => first run; the import writes only if it
-        // actually matched something, so clean users' rc files stay untouched. Never auto-applies.
-        if !configEngine.hasYabaiRegion() { _ = try? configEngine.importYabai() }
-        if !configEngine.hasSkhdRegion()  { _ = try? configEngine.importSkhd()  }
 
         // Dock window previews (gated; needs Accessibility + Screen Recording).
         let thumbCache = ThumbnailCache()
@@ -206,10 +191,6 @@ public enum YabaiDockstack {
             onLoginToggle: { enabled in _ = LoginItem.setEnabled(enabled) },
             loginIsEnabled: { LoginItem.isEnabled })
 
-        settings.configEngine = configEngine
-        settings.yabaiRawPath = yabaiRcPath
-        settings.skhdRawPath = skhdRcPath
-
         // Permissions section: request the permission AND open the right pane, one
         // at a time (avoids the two prompts colliding at launch).
         settings.permissionStatus = {
@@ -253,8 +234,8 @@ public enum YabaiDockstack {
         DispatchQueue.main.async {
             if args.contains("--open-settings") {
                 settings.show()   // open Settings on launch (handy for support/testing)
-                // Optional "--tab <n>" picks the tab (default: yabai tab).
-                var tab = 1
+                // Optional "--tab <n>" picks the tab (default: Appearance).
+                var tab = 0
                 if let i = args.firstIndex(of: "--tab"), i + 1 < args.count, let n = Int(args[i + 1]) {
                     tab = n
                 }
