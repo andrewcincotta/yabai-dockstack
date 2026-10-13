@@ -5,7 +5,10 @@ public final class IndicatorView: NSView {
         didSet { needsDisplay = true; updateTrackingAreas() }
     }
     public var config: AppConfig {
-        didSet { needsDisplay = true }
+        didSet {
+            needsDisplay = true
+            if config.clickThrough != oldValue.clickThrough { updateTrackingAreas() }
+        }
     }
     public var onClickWindow: ((Int) -> Void)?
 
@@ -93,6 +96,10 @@ public final class IndicatorView: NSView {
     public override func updateTrackingAreas() {
         super.updateTrackingAreas()
         trackingAreas.forEach(removeTrackingArea)
+        // Click-through indicators are inert: no hover tracking, so no title
+        // tooltip. (.activeAlways areas fire even when the panel ignores mouse
+        // events, so they must not be installed at all.)
+        guard !config.clickThrough else { hideTooltip(); return }
         let cell = bounds.width
         for (i, _) in stack.windows.enumerated() {
             let y = bounds.height - CGFloat(i + 1) * cell
