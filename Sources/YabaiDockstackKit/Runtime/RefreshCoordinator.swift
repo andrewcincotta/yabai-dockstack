@@ -45,7 +45,9 @@ public final class RefreshCoordinator {
         // Ask yabai which spaces are on screen: an empty visible space has no
         // visible windows, so inferring from windows alone would show every stack.
         let visibleSpaces = Set(client.querySpacesInfo().filter { $0.isVisible }.map { $0.index })
-        let windows = VisibleSpaceFilter.apply(raw, visibleSpaces: visibleSpaces)
+        let filtered = VisibleSpaceFilter.apply(raw, visibleSpaces: visibleSpaces)
+        // yabai's frames can be stale (e.g. after a display change); use real bounds.
+        let windows = WindowFrameCorrector.apply(filtered, bounds: WindowServerBounds.query())
         let stacks = StackBuilder.build(windows)
         let force = pendingForce
         pendingForce = false
