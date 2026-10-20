@@ -100,8 +100,42 @@ final class PreviewCell: NSView {
 
         let imgView = NSImageView(frame: NSRect(x: 6, y: 24, width: frame.width - 12, height: frame.height - 30))
         imgView.imageScaling = .scaleProportionallyUpOrDown
-        if let t = item.thumbnail { imgView.image = NSImage(cgImage: t, size: .zero) }
-        else { imgView.image = item.icon }
+        
+        if let t = item.thumbnail {
+            // Normal window with thumbnail
+            imgView.image = NSImage(cgImage: t, size: .zero)
+        } else {
+            // Minimized window - show dark appearance with icon
+            imgView.wantsLayer = true
+            imgView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
+            imgView.layer?.cornerRadius = 4
+            
+            // Show app icon centered on dark background
+            let iconSize: CGFloat = 64
+            let iconView = NSImageView(frame: NSRect(
+                x: (imgView.frame.width - iconSize) / 2,
+                y: (imgView.frame.height - iconSize) / 2 + 10,  // Shifted up slightly for label
+                width: iconSize,
+                height: iconSize
+            ))
+            iconView.image = item.icon
+            iconView.imageScaling = .scaleProportionallyUpOrDown
+            iconView.alphaValue = 0.6  // Slightly dimmed to indicate minimized state
+            imgView.addSubview(iconView)
+            
+            // Add "Minimized" label
+            let minimizedLabel = NSTextField(labelWithString: "Minimized")
+            minimizedLabel.font = .systemFont(ofSize: 10, weight: .medium)
+            minimizedLabel.textColor = NSColor.white.withAlphaComponent(0.5)
+            minimizedLabel.alignment = .center
+            minimizedLabel.frame = NSRect(
+                x: 0,
+                y: (imgView.frame.height - iconSize) / 2 - 20,
+                width: imgView.frame.width,
+                height: 14
+            )
+            imgView.addSubview(minimizedLabel)
+        }
         addSubview(imgView)
 
         let label = NSTextField(labelWithString: "\(item.title)  ·  Space \(item.space)")
