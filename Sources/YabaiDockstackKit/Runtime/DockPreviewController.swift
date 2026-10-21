@@ -121,16 +121,47 @@ public final class DockPreviewController {
     /// across display-name vs yabai-app-name mismatches like "Visual Studio Code"
     /// vs "Code"); fall back to app-name matching. Windows with a close in
     /// flight are excluded (and forgotten once yabai drops them).
+    /// Deduplicates windows with identical frames (handles apps like Autodesk Fusion
+    /// that create multiple layers for one visual window).
     private func windows(for hover: DockHover) -> [YabaiWindow] {
         let all = client.queryWindows()
         pendingCloseIDs.formIntersection(Set(all.map { $0.id }))
         let live = all.filter { !pendingCloseIDs.contains($0.id) }
+        
+        var matched: [YabaiWindow]
         if let bid = hover.bundleID {
-            let matched = live.filter { bundleID(pid: $0.pid) == bid }
+            matched = live.filter { bundleID(pid: $0.pid) == bid }
                 .sorted { ($0.space, $0.stackIndex, $0.id) < ($1.space, $1.stackIndex, $1.id) }
-            if !matched.isEmpty { return matched }
+            if matched.isEmpty {
+                matched = AppWindowGrouper.windows(of: hover.appTitle, in: live)
+            }
+        } else {
+            matched = AppWindowGrouper.windows(of: hover.appTitle, in: live)
         }
-        return AppWindowGrouper.windows(of: hover.appTitle, in: live)
+        
+        // Deduplicate windows with identical frames (layers/overlays)
+        return deduplicateOverlayWindows(matched)
+    }
+    
+    /// Remove duplicate windows that share the same frame, keeping only one per location.
+    /// This handles apps like Autodesk Fusion that create multiple layer windows at the
+    /// same position, which should appear as a single window in the dock preview.
+    private func deduplicateOverlayWindows(_ windows: [YabaiWindow]) -> [YabaiWindow] {
+        var seen: Set<String> = []
+        var unique: [YabaiWindow] = []
+        
+        for window in windows {
+            // Create a unique key based on space, display, and frame coordinates
+            // Use rounded coordinates to handle minor floating-point differences
+            let frameKey = "\(window.space)_\(window.display)_\(Int(window.frame.x))_\(Int(window.frame.y))_\(Int(window.frame.w))_\(Int(window.frame.h))"
+            
+            if !seen.contains(frameKey) {
+                seen.insert(frameKey)
+                unique.append(window)
+            }
+        }
+        
+        return unique
     }
 
     private func handle(_ hover: DockHover?) {
