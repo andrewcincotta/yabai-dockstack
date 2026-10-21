@@ -7,9 +7,10 @@ public struct PreviewItem {
     public let space: Int
     public let thumbnail: CGImage?
     public let icon: NSImage
-    public init(windowID: Int, title: String, space: Int, thumbnail: CGImage?, icon: NSImage) {
+    public let isMinimized: Bool
+    public init(windowID: Int, title: String, space: Int, thumbnail: CGImage?, icon: NSImage, isMinimized: Bool = false) {
         self.windowID = windowID; self.title = title; self.space = space
-        self.thumbnail = thumbnail; self.icon = icon
+        self.thumbnail = thumbnail; self.icon = icon; self.isMinimized = isMinimized
     }
 }
 
@@ -100,43 +101,36 @@ final class PreviewCell: NSView {
 
         let imgView = NSImageView(frame: NSRect(x: 6, y: 24, width: frame.width - 12, height: frame.height - 30))
         imgView.imageScaling = .scaleProportionallyUpOrDown
-        
-        if let t = item.thumbnail {
-            // Normal window with thumbnail
-            imgView.image = NSImage(cgImage: t, size: .zero)
-        } else {
-            // Minimized window - show dark appearance with icon
-            imgView.wantsLayer = true
-            imgView.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.7).cgColor
-            imgView.layer?.cornerRadius = 4
-            
-            // Show app icon centered on dark background
-            let iconSize: CGFloat = 64
-            let iconView = NSImageView(frame: NSRect(
-                x: (imgView.frame.width - iconSize) / 2,
-                y: (imgView.frame.height - iconSize) / 2 + 10,  // Shifted up slightly for label
-                width: iconSize,
-                height: iconSize
-            ))
-            iconView.image = item.icon
-            iconView.imageScaling = .scaleProportionallyUpOrDown
-            iconView.alphaValue = 0.6  // Slightly dimmed to indicate minimized state
-            imgView.addSubview(iconView)
-            
-            // Add "Minimized" label
-            let minimizedLabel = NSTextField(labelWithString: "Minimized")
-            minimizedLabel.font = .systemFont(ofSize: 10, weight: .medium)
-            minimizedLabel.textColor = NSColor.white.withAlphaComponent(0.5)
-            minimizedLabel.alignment = .center
-            minimizedLabel.frame = NSRect(
-                x: 0,
-                y: (imgView.frame.height - iconSize) / 2 - 20,
-                width: imgView.frame.width,
-                height: 14
-            )
-            imgView.addSubview(minimizedLabel)
-        }
+        if let t = item.thumbnail { imgView.image = NSImage(cgImage: t, size: .zero) }
+        else { imgView.image = item.icon }
         addSubview(imgView)
+        
+        // Add minimized indicator badge if window is minimized
+        if item.isMinimized {
+            // Create a semi-transparent overlay
+            let overlay = NSView(frame: imgView.bounds)
+            overlay.wantsLayer = true
+            overlay.layer?.backgroundColor = NSColor.black.withAlphaComponent(0.5).cgColor
+            overlay.layer?.cornerRadius = 4
+            imgView.addSubview(overlay)
+            
+            // Add SF Symbol for minimized window (dock icon with arrow)
+            let symbolConfig = NSImage.SymbolConfiguration(pointSize: 32, weight: .medium)
+            let symbolImage = NSImage(systemSymbolName: "rectangle.compress.vertical",
+                                     accessibilityDescription: "Minimized")?.withSymbolConfiguration(symbolConfig)
+            
+            let symbolView = NSImageView(frame: NSRect(
+                x: (imgView.frame.width - 40) / 2,
+                y: (imgView.frame.height - 40) / 2,
+                width: 40,
+                height: 40
+            ))
+            symbolView.image = symbolImage
+            symbolView.contentTintColor = .white
+            symbolView.imageScaling = .scaleProportionallyDown
+            symbolView.alphaValue = 0.9
+            imgView.addSubview(symbolView)
+        }
 
         let label = NSTextField(labelWithString: "\(item.title)  ·  Space \(item.space)")
         label.font = .systemFont(ofSize: 11)

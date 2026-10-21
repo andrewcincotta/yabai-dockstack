@@ -96,16 +96,16 @@ public final class DockPreviewController {
 
     private func items(for wins: [YabaiWindow]) -> [PreviewItem] {
         wins.map { win in
-            // Check if window is minimized - if so, don't show thumbnail
-            let thumbnail: CGImage?
-            if isWindowMinimized(pid: win.pid, windowId: win.id) {
-                thumbnail = nil  // Will show black box or icon instead
-            } else {
-                thumbnail = cache.get(win.id)
-            }
+            let minimized = isWindowMinimized(pid: win.pid, windowId: win.id)
+            // Don't show thumbnails for minimized windows
+            let thumbnail = minimized ? nil : cache.get(win.id)
             
-            PreviewItem(windowID: win.id, title: win.title, space: win.space,
-                        thumbnail: thumbnail, icon: icon(for: win))
+            return PreviewItem(windowID: win.id, 
+                             title: win.title, 
+                             space: win.space,
+                             thumbnail: thumbnail, 
+                             icon: icon(for: win),
+                             isMinimized: minimized)
         }
     }
 
