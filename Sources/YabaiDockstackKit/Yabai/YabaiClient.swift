@@ -28,6 +28,34 @@ public final class YabaiClient {
         _ = run(["-m", "window", "--focus", String(windowId)])
     }
 
+    /// One window by id, or nil if yabai doesn't know it.
+    public func queryWindow(id: Int) -> YabaiWindow? {
+        guard let data = run(["-m", "query", "--windows", "--window", String(id)]),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+              let single = try? JSONSerialization.data(withJSONObject: [obj]) else { return nil }
+        return YabaiWindow.decodeList(single).first
+    }
+
+    /// Index of the focused space (the one the user is looking at).
+    public func queryActiveSpaceIndex() -> Int? {
+        guard let data = run(["-m", "query", "--spaces", "--space"]),
+              let obj = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return obj["index"] as? Int
+    }
+
+    public func deminimize(windowId: Int) {
+        _ = run(["-m", "window", String(windowId), "--deminimize"])
+    }
+
+    /// Moves a window to a space without following it (needs the scripting addition).
+    public func moveWindow(id: Int, toSpace space: Int) {
+        _ = run(["-m", "window", String(id), "--space", String(space)])
+    }
+
+    public func focusSpace(_ space: Int) {
+        _ = run(["-m", "space", "--focus", String(space)])
+    }
+
     /// Close a window (AX-based; works without the scripting addition).
     public func close(windowId: Int) {
         _ = run(["-m", "window", String(windowId), "--close"])

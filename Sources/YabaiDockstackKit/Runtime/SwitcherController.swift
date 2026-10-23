@@ -127,9 +127,7 @@ public final class SwitcherController {
         lastCommitID = id
         lastCommitAt = Date()
         hide()
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            self?.client.focus(windowId: id)
-        }
+        WindowFocuser.focusWindow(id, using: client, restoreTo: .activeWindow)
     }
 
     public func cancel() { hide() }

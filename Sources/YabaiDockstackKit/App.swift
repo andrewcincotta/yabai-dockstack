@@ -1,5 +1,150 @@
 import AppKit
 
+/// Helper for focusing windows with smart deminimize behavior
+enum WindowFocuser {
+    /// Which space a minimized window is restored onto.
+    enum RestoreTarget {
+        /// The space of the active (focused) window — switcher restores.
+        case activeWindow
+        /// The space visible on the display under the mouse cursor — Dock preview restores.
+        case cursor
+    }
+
+    /// Focus a window. A minimized window is restored onto `target`'s space and
+    /// the user is never switched to the window's origin space. Runs off the
+    /// calling thread; the restore target is resolved before anything changes.
+    static func focusWindow(_ windowId: Int, using client: YabaiClient,
+                            restoreTo target: RestoreTarget) {
+        // Sampled now: the cursor may move while we work.
+        let cursor = CGEvent(source: nil)?.location
+        DispatchQueue.global(qos: .userInitiated).async {
+            let allWindows = client.queryWindows()
+            guard let targetWindow = allWindows.first(where: { $0.id == windowId }),
+                  targetWindow.isMinimized
+                    || isWindowMinimized(pid: targetWindow.pid, windowId: windowId, allWindows: allWindows)
+            else {
+                client.focus(windowId: windowId)
+                return
+            }
+            restore(targetWindow, target: target, cursor: cursor, client: client)
+        }
+    }
+
+    /// Mirrors the Raycast "restore minimized window" flow: capture the space
+    /// up front, deminimize, WAIT for macOS to finish, move the window (verified
+    /// — macOS can undo a move made mid-animation), and only then focus.
+    /// Focusing earlier, or after a failed move, would drag the user to the
+    /// window's origin space.
+    private static func restore(_ window: YabaiWindow, target: RestoreTarget,
+                                cursor: CGPoint?, client: YabaiClient) {
+        let destination = restoreSpace(for: target, cursor: cursor,
+                                       windows: client.queryWindows(), client: client)
+
+        client.deminimize(windowId: window.id)
+        guard waitForWindow(window.id, client: client, until: { !$0.isMinimized }) != nil else {
+            NSLog("yabai-dockstack: window %d did not deminimize in time", window.id)
+            client.focus(windowId: window.id)
+            return
+        }
+
+        if let destination {
+            guard moveVerified(window.id, toSpace: destination, client: client) else {
+                // Not focusing: that would switch to the window's old space.
+                NSLog("yabai-dockstack: could not move window %d to space %d", window.id, destination)
+                return
+            }
+        }
+
+        client.focus(windowId: window.id)
+
+        // Last line of defence: if macOS still switched spaces, switch back.
+        if let destination, let active = client.queryActiveSpaceIndex(), active != destination {
+            client.focusSpace(destination)
+        }
+    }
+
+    private static func restoreSpace(for target: RestoreTarget, cursor: CGPoint?,
+                                     windows: [YabaiWindow], client: YabaiClient) -> Int? {
+        switch target {
+        case .cursor:
+            if let cursor, let space = visibleSpace(at: cursor, client: client) { return space }
+            fallthrough
+        case .activeWindow:
+            if let space = client.queryActiveSpaceIndex() { return space }
+            return (windows.first(where: { $0.hasFocus }) ?? windows.first(where: { $0.isVisible }))?.space
+        }
+    }
+
+    /// The visible space of the display containing `point` (global, top-left origin — yabai's convention).
+    private static func visibleSpace(at point: CGPoint, client: YabaiClient) -> Int? {
+        guard let display = client.queryDisplaysInfo().first(where: {
+            point.x >= $0.frame.x && point.x < $0.frame.x + $0.frame.w
+                && point.y >= $0.frame.y && point.y < $0.frame.y + $0.frame.h
+        }) else { return nil }
+        return client.querySpacesInfo().first(where: { $0.display == display.index && $0.isVisible })?.index
+    }
+
+    private static func waitForWindow(_ id: Int, client: YabaiClient, timeout: TimeInterval = 2.0,
+                                      until done: (YabaiWindow) -> Bool) -> YabaiWindow? {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            if let w = client.queryWindow(id: id), done(w) { return w }
+            if Date() >= deadline { return nil }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+    }
+
+    /// Moves the window and confirms yabai reports it on `space`, re-issuing the
+    /// move if macOS undid it while finishing the restore.
+    private static func moveVerified(_ id: Int, toSpace space: Int, client: YabaiClient,
+                                     timeout: TimeInterval = 2.0) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            if client.queryWindow(id: id)?.space == space { return true }
+            if Date() >= deadline { return false }
+            client.moveWindow(id: id, toSpace: space)
+            Thread.sleep(forTimeInterval: 0.15)
+        }
+    }
+
+    private static func isWindowMinimized(pid: Int, windowId: Int, allWindows: [YabaiWindow]) -> Bool {
+        let appElement = AXUIElementCreateApplication(pid_t(pid))
+        var windowListRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowListRef) == .success,
+              let windowList = windowListRef as? [AXUIElement],
+              let targetWindow = allWindows.first(where: { $0.id == windowId }) else { return false }
+        
+        for axWindow in windowList {
+            var minimizedRef: CFTypeRef?
+            guard AXUIElementCopyAttributeValue(axWindow, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
+                  let isMinimized = minimizedRef as? Bool, isMinimized else { continue }
+            
+            // Try CGWindowID match
+            var cgWindowIdRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(axWindow, "AXWindowID" as CFString, &cgWindowIdRef) == .success,
+               let cgWindowId = cgWindowIdRef as? UInt32, Int(cgWindowId) == windowId {
+                return true
+            }
+            
+            // Fallback: title + position match
+            var titleRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleRef) == .success,
+               let axTitle = titleRef as? String, axTitle == targetWindow.title {
+                var posRef: CFTypeRef?
+                var pos = CGPoint.zero
+                if AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef) == .success,
+                   let p = posRef {
+                    AXValueGetValue(p as! AXValue, .cgPoint, &pos)
+                    if abs(targetWindow.frame.x - pos.x) < 5 {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
+    }
+}
+
 public enum YabaiDockstack {
     public static func versionString() -> String {
         let v = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
@@ -33,7 +178,10 @@ public enum YabaiDockstack {
         let client = YabaiClient(yabaiPath: resolvedYabai)
 
         let renderer = OverlayRenderer(config: config)
-        renderer.onClickWindow = { id in client.focus(windowId: id) }
+        renderer.onClickWindow = { id in
+            // Smart focus: deminimize onto the cursor's space if needed
+            WindowFocuser.focusWindow(id, using: client, restoreTo: .cursor)
+        }
 
         // replay mode: render once from a JSON file, no live yabai
         if let idx = args.firstIndex(of: "--replay"), idx + 1 < args.count {
@@ -144,7 +292,7 @@ public enum YabaiDockstack {
         menu.windowListProvider = {
             WindowMenuModel.build(client.queryWindows(), spaceLabels: client.querySpaceLabels())
         }
-        menu.onSelectWindow = { id in client.focus(windowId: id) }
+        menu.onSelectWindow = { id in WindowFocuser.focusWindow(id, using: client, restoreTo: .cursor) }
         menu.permissionWarning = {
             (config.dockPreview && !PermissionsHelper.allGranted)
                 ? L10n.t("ui.menu.grantPerms") : nil

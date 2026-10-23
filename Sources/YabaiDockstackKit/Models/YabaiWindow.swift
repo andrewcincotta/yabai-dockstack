@@ -12,15 +12,17 @@ public struct YabaiWindow: Equatable {
     public let hasFocus: Bool
     public let isVisible: Bool
     public let isFloating: Bool
+    public let isMinimized: Bool
 
     public init(id: Int, pid: Int, app: String, title: String, frame: YRect,
                 display: Int, space: Int, stackIndex: Int, hasFocus: Bool,
-                isVisible: Bool = true, isFloating: Bool = false) {
+                isVisible: Bool = true, isFloating: Bool = false, isMinimized: Bool = false) {
         self.id = id; self.pid = pid; self.app = app; self.title = title
         self.frame = frame; self.display = display; self.space = space
         self.stackIndex = stackIndex; self.hasFocus = hasFocus
         self.isVisible = isVisible
         self.isFloating = isFloating
+        self.isMinimized = isMinimized
     }
 
     private struct Raw: Decodable {
@@ -36,12 +38,14 @@ public struct YabaiWindow: Equatable {
         let hasFocus: Bool
         let isVisible: Bool?
         let isFloating: Bool?
+        let isMinimized: Bool?
         enum CodingKeys: String, CodingKey {
             case id, pid, app, title, frame, display, space
             case stackIndex = "stack-index"
             case hasFocus = "has-focus"
             case isVisible = "is-visible"
             case isFloating = "is-floating"
+            case isMinimized = "is-minimized"
         }
     }
 
@@ -58,7 +62,8 @@ public struct YabaiWindow: Equatable {
                 frame: YRect(x: raw.frame.x, y: raw.frame.y, w: raw.frame.w, h: raw.frame.h),
                 display: raw.display, space: raw.space,
                 stackIndex: raw.stackIndex, hasFocus: raw.hasFocus,
-                isVisible: raw.isVisible ?? true, isFloating: raw.isFloating ?? false))
+                isVisible: raw.isVisible ?? true, isFloating: raw.isFloating ?? false,
+                isMinimized: raw.isMinimized ?? false))
         }
         return out
     }

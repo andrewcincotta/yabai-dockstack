@@ -139,6 +139,17 @@ public final class DockPreviewController {
             matched = AppWindowGrouper.windows(of: hover.appTitle, in: live)
         }
         
+        // Special handling for Autodesk Fusion: filter out helper app windows
+        // The main app is com.autodesk.fusion360, but helper processes like
+        // com.autodesk.dls.streamer.scriptapp.Autodesk-Fusion should be excluded
+        if let bid = hover.bundleID, bid.contains("autodesk") && bid.contains("fusion") {
+            matched = matched.filter { win in
+                guard let winBundleID = bundleID(pid: win.pid) else { return true }
+                // Keep only the main Fusion app, exclude streamer/helper apps
+                return !winBundleID.contains("streamer") && !winBundleID.contains("scriptapp")
+            }
+        }
+        
         // Deduplicate windows with identical frames (layers/overlays)
         return deduplicateOverlayWindows(matched)
     }
@@ -201,132 +212,57 @@ public final class DockPreviewController {
         }
     }
     
-    /// Focus a window, handling minimized windows by deminimizing them to the
-    /// current active space/display instead of their original space.
+    /// Focus a window using the shared WindowFocuser (handles deminimize smartly)
     private func focusWindow(_ windowId: Int, from windows: [YabaiWindow]) {
-        guard let targetWindow = windows.first(where: { $0.id == windowId }) else {
-            client.focus(windowId: windowId)
-            return
-        }
-        
-        // Check if the window is minimized using Accessibility API
-        if isWindowMinimized(pid: targetWindow.pid, windowId: windowId) {
-            // Get the current active space and display
-            guard let (currentDisplay, currentSpace) = getCurrentActiveLocation() else {
-                // Fallback: just deminimize to original location
-                DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                    guard let self else { return }
-                    _ = self.runYabaiCommand("-m window \(windowId) --deminimize")
-                    Thread.sleep(forTimeInterval: 0.15)
-                    DispatchQueue.main.async { self.client.focus(windowId: windowId) }
-                }
-                return
-            }
-            
-            // Deminimize and move to current space
-            deminimizeToCurrentSpace(windowId: windowId,
-                                    targetDisplay: currentDisplay,
-                                    targetSpace: currentSpace,
-                                    originalSpace: targetWindow.space,
-                                    originalDisplay: targetWindow.display)
-        } else {
-            // Window is not minimized, use normal focus
-            client.focus(windowId: windowId)
-        }
+        WindowFocuser.focusWindow(windowId, using: client, restoreTo: .cursor)
     }
     
-    /// Run a yabai command directly using the client's yabai path
-    @discardableResult
-    private func runYabaiCommand(_ args: String) -> String {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: client.path)
-        process.arguments = args.split(separator: " ").map(String.init)
-        
-        let pipe = Pipe()
-        process.standardOutput = pipe
-        process.standardError = pipe
-        
-        do {
-            try process.run()
-            process.waitUntilExit()
-            let data = pipe.fileHandleForReading.readDataToEndOfFile()
-            return String(data: data, encoding: .utf8) ?? ""
-        } catch {
-            return ""
-        }
-    }
-    
-    /// Check if a window is minimized using Accessibility API
+    /// Check if a specific window is minimized using Accessibility API
+    /// (used for visual indicator in preview)
     private func isWindowMinimized(pid: Int, windowId: Int) -> Bool {
         let appElement = AXUIElementCreateApplication(pid_t(pid))
         var windowListRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowListRef) == .success,
               let windowList = windowListRef as? [AXUIElement] else { return false }
         
-        // Check each window for minimized state
-        // Note: We iterate through windows since matching by ID is not reliable
+        // Get the target window details for matching
+        let allWindows = client.queryWindows()
+        guard let targetWindow = allWindows.first(where: { $0.id == windowId }) else { return false }
+        
         for axWindow in windowList {
             var minimizedRef: CFTypeRef?
-            if AXUIElementCopyAttributeValue(axWindow, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
-               let isMinimized = minimizedRef as? Bool, isMinimized {
-                // Found a minimized window - assume it's the one we're looking for
-                // This works well in practice since we're called with a specific window ID
-                // from the dock preview which already filtered to this app
+            guard AXUIElementCopyAttributeValue(axWindow, kAXMinimizedAttribute as CFString, &minimizedRef) == .success,
+                  let isMinimized = minimizedRef as? Bool else { continue }
+            
+            if !isMinimized { continue }
+            
+            // Try to match by CGWindowID
+            var cgWindowIdRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(axWindow, "AXWindowID" as CFString, &cgWindowIdRef) == .success,
+               let cgWindowId = cgWindowIdRef as? UInt32,
+               Int(cgWindowId) == windowId {
                 return true
+            }
+            
+            // Fallback: match by title and position
+            var titleRef: CFTypeRef?
+            if AXUIElementCopyAttributeValue(axWindow, kAXTitleAttribute as CFString, &titleRef) == .success,
+               let axTitle = titleRef as? String,
+               axTitle == targetWindow.title {
+                
+                var posRef: CFTypeRef?
+                var pos = CGPoint.zero
+                if AXUIElementCopyAttributeValue(axWindow, kAXPositionAttribute as CFString, &posRef) == .success,
+                   let p = posRef {
+                    AXValueGetValue(p as! AXValue, .cgPoint, &pos)
+                    if abs(targetWindow.frame.x - pos.x) < 5 {
+                        return true
+                    }
+                }
             }
         }
         
         return false
-    }
-    
-    /// Get the current active display and space based on focused window or mouse position
-    private func getCurrentActiveLocation() -> (display: Int, space: Int)? {
-        // Try to get the focused window's location first (most reliable)
-        let allWindows = client.queryWindows()
-        if let focusedWindow = allWindows.first(where: { $0.hasFocus }) {
-            return (focusedWindow.display, focusedWindow.space)
-        }
-        
-        // Fallback: Find the most recently used visible window on any display
-        // This is a heuristic since we don't have direct access to querySpaces
-        if let recentWindow = allWindows.first(where: { $0.isVisible }) {
-            return (recentWindow.display, recentWindow.space)
-        }
-        
-        // Last resort: use first window we can find
-        if let firstWindow = allWindows.first {
-            return (firstWindow.display, firstWindow.space)
-        }
-        
-        return nil
-    }
-    
-    /// Deminimize a window and move it to the current space
-    private func deminimizeToCurrentSpace(windowId: Int,
-                                         targetDisplay: Int,
-                                         targetSpace: Int,
-                                         originalSpace: Int,
-                                         originalDisplay: Int) {
-        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-            guard let self else { return }
-            
-            // Step 1: Deminimize the window (it will appear on its original space)
-            _ = self.runYabaiCommand("-m window \(windowId) --deminimize")
-            
-            // Small delay to let deminimize complete
-            Thread.sleep(forTimeInterval: 0.15)
-            
-            // Step 2: Move to target space if different from original
-            if targetSpace != originalSpace || targetDisplay != originalDisplay {
-                _ = self.runYabaiCommand("-m window \(windowId) --space \(targetSpace)")
-                Thread.sleep(forTimeInterval: 0.1)
-            }
-            
-            // Step 3: Focus the window
-            DispatchQueue.main.async {
-                self.client.focus(windowId: windowId)
-            }
-        }
     }
 
     /// Warm the cache with currently on-screen windows (call on yabai signals).
