@@ -30,30 +30,32 @@ enum WindowFocuser {
         }
     }
 
-    /// Mirrors the Raycast "restore minimized window" flow: capture the space
-    /// up front, deminimize, WAIT for macOS to finish, move the window (verified
-    /// — macOS can undo a move made mid-animation), and only then focus.
-    /// Focusing earlier, or after a failed move, would drag the user to the
-    /// window's origin space.
+    /// Moves the window to the destination space WHILE STILL MINIMIZED (yabai's
+    /// scripting addition can move minimized windows), then deminimizes it
+    /// there. Deminimizing first makes macOS jump to the window's origin space;
+    /// moving first means there is nothing to jump to. Focus comes last, and
+    /// only if everything above succeeded.
     private static func restore(_ window: YabaiWindow, target: RestoreTarget,
                                 cursor: CGPoint?, client: YabaiClient) {
         let destination = restoreSpace(for: target, cursor: cursor,
                                        windows: client.queryWindows(), client: client)
 
-        client.deminimize(windowId: window.id)
-        guard waitForWindow(window.id, client: client, until: { !$0.isMinimized }) != nil else {
-            NSLog("yabai-dockstack: window %d did not deminimize in time", window.id)
-            client.focus(windowId: window.id)
-            return
-        }
-
-        if let destination {
+        if let destination, window.space != destination {
             guard moveVerified(window.id, toSpace: destination, client: client) else {
-                // Not focusing: that would switch to the window's old space.
+                // Not restoring: that would switch to the window's old space.
                 NSLog("yabai-dockstack: could not move window %d to space %d", window.id, destination)
                 return
             }
         }
+
+        client.deminimize(windowId: window.id)
+        guard let restored = waitForWindow(window.id, client: client, until: { !$0.isMinimized }) else {
+            NSLog("yabai-dockstack: window %d did not deminimize in time", window.id)
+            return
+        }
+
+        // yabai leaves a restored window floating (unmanaged); put it back in the tiling tree.
+        if restored.isFloating { client.toggleFloat(windowId: window.id) }
 
         client.focus(windowId: window.id)
 

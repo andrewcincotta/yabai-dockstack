@@ -44,7 +44,8 @@ public final class YabaiClient {
     }
 
     public func deminimize(windowId: Int) {
-        _ = run(["-m", "window", String(windowId), "--deminimize"])
+        // The selector is the argument of --deminimize; `window <id> --deminimize` is rejected.
+        _ = run(["-m", "window", "--deminimize", String(windowId)])
     }
 
     /// Moves a window to a space without following it (needs the scripting addition).
