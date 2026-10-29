@@ -54,8 +54,15 @@ enum WindowFocuser {
             return
         }
 
-        // yabai leaves a restored window floating (unmanaged); put it back in the tiling tree.
-        if restored.isFloating { client.toggleFloat(windowId: window.id) }
+        // yabai keeps a window's float state across minimize, move and
+        // deminimize. A floating (unmanaged) window stays floating and is
+        // centered on its new display; a tiled one is re-tiled only if it
+        // somehow came back floating.
+        if window.isFloating {
+            center(restored, client: client)
+        } else if restored.isFloating {
+            client.toggleFloat(windowId: window.id)
+        }
 
         client.focus(windowId: window.id)
 
@@ -75,6 +82,18 @@ enum WindowFocuser {
             if let space = client.queryActiveSpaceIndex() { return space }
             return (windows.first(where: { $0.hasFocus }) ?? windows.first(where: { $0.isVisible }))?.space
         }
+    }
+
+    /// Centers a floating window on its display, shrunk to fit if it came from a larger one.
+    private static func center(_ window: YabaiWindow, client: YabaiClient) {
+        guard let display = client.queryDisplaysInfo().first(where: { $0.index == window.display })?.frame
+        else { return }
+        let w = min(window.frame.w, display.w), h = min(window.frame.h, display.h)
+        if w != window.frame.w || h != window.frame.h {
+            client.resizeWindow(id: window.id, w: w, h: h)
+        }
+        client.moveWindow(id: window.id, absX: display.x + (display.w - w) / 2,
+                          absY: display.y + (display.h - h) / 2)
     }
 
     /// The visible space of the display containing `point` (global, top-left origin — yabai's convention).

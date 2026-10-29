@@ -114,6 +114,10 @@ public final class YabaiClient {
         _ = run(["-m", "window", String(id), "--move", "abs:\(Int(absX)):\(Int(absY))"])
     }
 
+    public func resizeWindow(id: Int, w: Double, h: Double) {
+        _ = run(["-m", "window", String(id), "--resize", "abs:\(Int(w)):\(Int(h))"])
+    }
+
     public func balance(space: Int) {
         _ = run(["-m", "space", String(space), "--balance"])
     }
