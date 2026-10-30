@@ -2,12 +2,13 @@ import Foundation
 
 public final class SignalListener {
     private let socketPath: String
-    private let onPoke: () -> Void
+    /// Called with `true` when the poke asked to bypass the redraw diff.
+    private let onPoke: (Bool) -> Void
     private let onCommand: ((String) -> Void)?
     private var fd: Int32 = -1
     private var running = false
 
-    public init(socketPath: String, onPoke: @escaping () -> Void,
+    public init(socketPath: String, onPoke: @escaping (Bool) -> Void,
                 onCommand: ((String) -> Void)? = nil) {
         self.socketPath = socketPath
         self.onPoke = onPoke
@@ -59,7 +60,8 @@ public final class SignalListener {
                 // Runs on the accept thread; handlers hop to their own queue/main.
                 onCommand(text)
             } else {
-                DispatchQueue.main.async { [weak self] in self?.onPoke() }
+                let force = text == "force"
+                DispatchQueue.main.async { [weak self] in self?.onPoke(force) }
             }
         }
     }

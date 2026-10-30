@@ -145,7 +145,8 @@ print("Socket round-trip")
 do {
     let sockPath = NSTemporaryDirectory() + "yst-selftest.sock"
     var poked = false
-    let listener = SignalListener(socketPath: sockPath) { poked = true }
+    var pokedForce: Bool?
+    let listener = SignalListener(socketPath: sockPath) { force in poked = true; pokedForce = force }
     listener.start()
     Thread.sleep(forTimeInterval: 0.1)  // let bind/listen settle
     RefreshClient.sendPoke(socketPath: sockPath)
@@ -154,8 +155,15 @@ do {
     while !poked && Date() < deadline {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))
     }
+    check(poked && pokedForce == false, "poke delivered through unix socket to listener callback")
+    poked = false
+    RefreshClient.sendPoke(socketPath: sockPath, force: true)
+    let deadline2 = Date().addingTimeInterval(2.0)
+    while !poked && Date() < deadline2 {
+        RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+    }
     listener.stop()
-    check(poked, "poke delivered through unix socket to listener callback")
+    check(poked && pokedForce == true, "forced poke delivered with force flag")
 }
 
 // Optional: decode a real `yabai -m query --windows` dump passed as argv[1].

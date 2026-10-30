@@ -23,4 +23,19 @@ final class AutoSetupTests: XCTestCase {
         XCTAssertEqual(first.label, "yabai-dockstack-window_focused")
         XCTAssertEqual(first.action, "\"/Apps/yst.app/Contents/MacOS/yst\" --refresh")
     }
+
+    func testForceOnlyOnDisplayChanged() {
+        let specs = SignalInstaller.specs(appBinaryPath: "/b")
+        for spec in specs {
+            XCTAssertEqual(spec.action.hasSuffix("--refresh --force"),
+                           spec.event == "display_changed", spec.event)
+        }
+    }
+
+    func testSubscribesToMinimizeHideQuit() {
+        for e in ["window_minimized", "window_deminimized", "application_hidden",
+                  "application_visible", "application_terminated"] {
+            XCTAssertTrue(SignalInstaller.events.contains(e), e)
+        }
+    }
 }

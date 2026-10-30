@@ -68,4 +68,12 @@ final class AppConfigTests: XCTestCase {
         XCTAssertTrue(c.switcherEnabled)
         XCTAssertEqual(c.switcherHotkeyAll, "alt - tab")
     }
+
+    func testPollSecondsDefaultAndMigration() {
+        XCTAssertEqual(AppConfig.defaults.pollSeconds, 30.0)
+        let old = AppConfig.load(from: #"{"pollSeconds":3}"#.data(using: .utf8)!)
+        XCTAssertEqual(old.pollSeconds, 30.0)
+        let custom = AppConfig.load(from: #"{"pollSeconds":5}"#.data(using: .utf8)!)
+        XCTAssertEqual(custom.pollSeconds, 5.0)
+    }
 }

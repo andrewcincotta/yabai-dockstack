@@ -186,7 +186,7 @@ public enum YabaiDockstack {
                                     preferred: Locale.preferredLanguages)
 
         if args.contains("--refresh") {
-            RefreshClient.sendPoke(socketPath: config.socketPath)
+            RefreshClient.sendPoke(socketPath: config.socketPath, force: args.contains("--force"))
             return
         }
 
@@ -295,7 +295,7 @@ public enum YabaiDockstack {
         let menu = MenuBarController()
         let listener = SignalListener(
             socketPath: config.socketPath,
-            onPoke: { coordinator.requestRefresh(force: true) },
+            onPoke: { force in coordinator.requestRefresh(force: force) },
             onCommand: { cmd in
                 if cmd == "show-menu" {
                     DispatchQueue.main.async { menu.openMenu() }
@@ -424,11 +424,18 @@ public enum YabaiDockstack {
         // Self-heal: yabai's CLI-registered signals are wiped whenever yabai
         // restarts. Periodically re-add ours if they've gone missing, so the
         // instant event path keeps working without a relaunch.
+        // A yabai restart recreates its socket, so only a changed socket identity
+        // (checked with a local stat) triggers the `signal --list` query.
+        var lastSocketIdentity: SignalInstaller.SocketIdentity?
         let signalHealth = Timer(timeInterval: 5, repeats: true) { _ in
             // Activate Dock previews once Accessibility is granted (no relaunch).
             ensureDockController()
             ensureSwitcherTap()
             guard client.isAvailable() else { return }
+            let identity = SignalInstaller.yabaiSocketIdentity()
+            guard let identity else { lastSocketIdentity = nil; return }  // yabai down
+            guard identity != lastSocketIdentity else { return }
+            lastSocketIdentity = identity
             if !SignalInstaller.isInstalled(client: client) {
                 installSignals()
                 coordinator.requestRefresh()

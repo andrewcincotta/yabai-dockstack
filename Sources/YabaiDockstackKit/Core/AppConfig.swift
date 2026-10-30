@@ -54,7 +54,7 @@ public struct AppConfig: Codable, Equatable {
         socketPath: "/tmp/yabai-dockstack.sock",
         style: .icon, cellSize: 32, offset: 4,
         focusedAlpha: 1.0, unfocusedAlpha: 0.4,
-        debounceSeconds: 0.05, pollSeconds: 3.0,
+        debounceSeconds: 0.05, pollSeconds: 30.0,
         fullWidthSide: "left",
         edgeInset: 6,
         flagColor: "#4C8DFF",
@@ -85,7 +85,11 @@ public struct AppConfig: Codable, Equatable {
               let cfg = try? JSONDecoder().decode(AppConfig.self, from: mergedData) else {
             return defaults
         }
-        return cfg
+        var migrated = cfg
+        // 3 s was the old default (written to disk on first run); signals now
+        // cover the gaps that needed it, so move such configs to the new default.
+        if migrated.pollSeconds == 3.0 { migrated.pollSeconds = defaults.pollSeconds }
+        return migrated
     }
 
     /// Loads from a file path, expanding `~`. Missing file → defaults.

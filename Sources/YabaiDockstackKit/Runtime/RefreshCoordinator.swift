@@ -29,7 +29,7 @@ public final class RefreshCoordinator {
     }
 
     /// - Parameter force: redraw even if the stacks look unchanged. Used for
-    ///   explicit `--refresh` pokes and display changes, where screen geometry
+    ///   `--refresh --force` pokes and display changes, where screen geometry
     ///   (not captured in the stack data) may have changed.
     public func requestRefresh(force: Bool = false) {
         pending?.cancel()
