@@ -10,6 +10,10 @@ public final class DockPreviewController {
     private let panel = DockPreviewPanel()
     private var watcher: DockWatcher?
     private var keepTimer: Timer?
+    /// When the cursor first left the keep region; hide after a short grace.
+    private var outsideSince: Date?
+    /// Global click monitor: any click outside our panel dismisses the preview.
+    private var clickMonitor: Any?
     private var iconFrame: CGRect?
     /// The hover that produced the current panel — lets the ✕ button rebuild
     /// the preview after a window is closed.
@@ -28,15 +32,27 @@ public final class DockPreviewController {
         let w = DockWatcher { [weak self] hover in self?.handle(hover) }
         w.start()
         watcher = w
+        // Global monitors don't see clicks on our own panel, so cell/✕ clicks
+        // still work; clicks anywhere else are a reliable "dismiss".
+        clickMonitor = NSEvent.addGlobalMonitorForEvents(
+            matching: [.leftMouseDown, .rightMouseDown]) { [weak self] _ in
+                guard let self, self.panel.isVisible else { return }
+                self.hidePanel()
+            }
     }
 
     public func stop() {
         watcher?.stop(); watcher = nil
+        if let m = clickMonitor { NSEvent.removeMonitor(m) }
+        clickMonitor = nil
         hidePanel()
     }
 
     private func hidePanel() {
         keepTimer?.invalidate(); keepTimer = nil
+        outsideSince = nil
+        // Forget the hovered icon so re-hovering the same one shows it again.
+        watcher?.reset()
         iconFrame = nil
         lastHover = nil
         panel.hide()
@@ -71,11 +87,12 @@ public final class DockPreviewController {
     }
 
     // While a preview is visible, keep it open as long as the cursor stays within
-    // the panel + the Dock icon + the gap between them. This is robust against the
+    // the panel + the Dock icon + the gap between them (DockPreviewKeepRegion). This is robust against the
     // panel rebuilding its content (live-thumbnail refresh) and the bare gap,
     // which event-based tracking handled unreliably.
     private func startKeepTimer() {
         keepTimer?.invalidate()
+        outsideSince = nil
         let t = Timer(timeInterval: 0.08, repeats: true) { [weak self] _ in self?.checkKeep() }
         RunLoop.main.add(t, forMode: .common)
         keepTimer = t
@@ -85,8 +102,14 @@ public final class DockPreviewController {
         guard panel.isVisible, let icon = iconFrame, let pf = panel.currentFrame else {
             hidePanel(); return
         }
-        let region = pf.union(icon).insetBy(dx: -12, dy: -12)
-        if !region.contains(NSEvent.mouseLocation) { hidePanel() }
+        if DockPreviewKeepRegion.contains(NSEvent.mouseLocation, panel: pf, icon: icon) {
+            outsideSince = nil
+            return
+        }
+        // Short grace so small overshoots of the tight region don't flicker.
+        let now = Date()
+        guard let since = outsideSince else { outsideSince = now; return }
+        if now.timeIntervalSince(since) >= 0.2 { hidePanel() }
     }
 
     private func icon(for win: YabaiWindow) -> NSImage {

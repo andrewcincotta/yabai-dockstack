@@ -15,6 +15,9 @@ public final class DockWatcher {
     private var monitor: Any?
     private var lastFire = Date.distantPast
     private var lastTitle: String?
+    /// Deferred re-check for a move dropped by the throttle, so the cursor's
+    /// final position is always evaluated.
+    private var trailing: DispatchWorkItem?
 
     public init(onHover: @escaping (DockHover?) -> Void) { self.onHover = onHover }
 
@@ -27,13 +30,32 @@ public final class DockWatcher {
     public func stop() {
         if let m = monitor { NSEvent.removeMonitor(m) }
         monitor = nil
+        trailing?.cancel(); trailing = nil
         lastTitle = nil
     }
 
+    /// Forget the last hovered icon (call when the preview is dismissed), so
+    /// hovering the same icon again re-fires.
+    public func reset() { lastTitle = nil }
+
     private func handleMove() {
         let now = Date()
-        guard now.timeIntervalSince(lastFire) > 0.06 else { return }
+        let throttle = 0.06
+        let elapsed = now.timeIntervalSince(lastFire)
+        guard elapsed > throttle else {
+            if trailing == nil {
+                let work = DispatchWorkItem { [weak self] in
+                    self?.trailing = nil
+                    self?.handleMove()
+                }
+                trailing = work
+                DispatchQueue.main.asyncAfter(deadline: .now() + (throttle - elapsed) + 0.005,
+                                              execute: work)
+            }
+            return
+        }
         lastFire = now
+        trailing?.cancel(); trailing = nil
 
         let mouse = NSEvent.mouseLocation                       // Cocoa global (bottom-left)
         let screenH = NSScreen.screens.first?.frame.height ?? 0
