@@ -15,7 +15,13 @@ public final class OverlayRenderer {
         }
     }
 
-    public func update(_ stacks: [Stack]) {
+    /// - Parameter rebuild: tear down every panel first so each is recreated on
+    ///   the active space (panels stay pinned to the space they were created on).
+    public func update(_ stacks: [Stack], rebuild: Bool = false) {
+        if rebuild {
+            for panel in panels.values { panel.orderOut(nil) }
+            panels.removeAll()
+        }
         let screens = ScreenProvider.screens()
         let primaryH = ScreenProvider.primaryHeight()
         var liveKeys = Set<String>()

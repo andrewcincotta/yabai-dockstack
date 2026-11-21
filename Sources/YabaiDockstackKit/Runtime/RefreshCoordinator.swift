@@ -3,7 +3,8 @@ import Foundation
 public final class RefreshCoordinator {
     private var config: AppConfig
     private let client: YabaiClient
-    private let onStacks: ([Stack]) -> Void
+    /// Receives the stacks and whether this was a forced refresh (rebuild panels).
+    private let onStacks: ([Stack], Bool) -> Void
     private let queue = DispatchQueue(label: "refresh.coordinator")
     private var pending: DispatchWorkItem?
     /// Set when any request since the last run asked to bypass the diff; survives
@@ -16,7 +17,7 @@ public final class RefreshCoordinator {
     /// Called on the coordinator's queue; the receiver hops threads itself.
     public var onWindows: (([YabaiWindow]) -> Void)?
 
-    public init(config: AppConfig, client: YabaiClient, onStacks: @escaping ([Stack]) -> Void) {
+    public init(config: AppConfig, client: YabaiClient, onStacks: @escaping ([Stack], Bool) -> Void) {
         self.config = config
         self.client = client
         self.onStacks = onStacks
@@ -53,7 +54,7 @@ public final class RefreshCoordinator {
         pendingForce = false
         if force || RefreshDiff.shouldRedraw(old: last, new: stacks) {
             last = stacks
-            DispatchQueue.main.async { [weak self] in self?.onStacks(stacks) }
+            DispatchQueue.main.async { [weak self] in self?.onStacks(stacks, force) }
         }
     }
 

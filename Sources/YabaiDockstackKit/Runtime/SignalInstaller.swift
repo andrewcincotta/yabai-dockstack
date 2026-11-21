@@ -20,9 +20,10 @@ public enum SignalInstaller {
         "application_terminated",
     ]
 
-    /// Events whose pokes bypass the redraw diff: screen geometry changed, which
-    /// the stack data doesn't capture.
-    public static let forceEvents: Set<String> = ["display_changed"]
+    /// Events whose pokes bypass the redraw diff and rebuild every panel: screen
+    /// geometry changed (not captured in the stack data), or the active space
+    /// changed (panels are pinned to the space they were created on).
+    public static let forceEvents: Set<String> = ["display_changed", "space_changed"]
 
     public static func label(for event: String) -> String { "yabai-dockstack-\(event)" }
 

@@ -6,6 +6,6 @@ for evt in window_focused window_moved window_resized window_created \
            window_minimized window_deminimized application_hidden application_visible \
            application_terminated; do
   extra=""
-  [ "$evt" = display_changed ] && extra=" --force"
+  case "$evt" in display_changed|space_changed) extra=" --force" ;; esac
   yabai -m signal --add event="$evt" action="$BIN --refresh$extra"
 done

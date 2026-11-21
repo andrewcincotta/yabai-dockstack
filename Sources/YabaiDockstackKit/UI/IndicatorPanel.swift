@@ -15,8 +15,9 @@ public final class IndicatorPanel: NSPanel {
         hasShadow = false
         ignoresMouseEvents = config.clickThrough
         // Stay on the space where created (do NOT join all spaces), so a stack's
-        // indicator only shows on the space the stack actually lives on. Panels are
-        // recreated per space on space_changed, so they always land on the right one.
+        // indicator only shows on the space the stack actually lives on. Stack keys
+        // include the space, and space_changed forces a full rebuild, so panels are
+        // always (re)created on the active space.
         collectionBehavior = [.ignoresCycle]
         indicatorView.frame = CGRect(origin: .zero, size: frame.size)
         contentView = indicatorView

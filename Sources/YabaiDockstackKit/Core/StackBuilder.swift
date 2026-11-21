@@ -1,8 +1,9 @@
 public enum StackBuilder {
     public static func build(_ windows: [YabaiWindow]) -> [Stack] {
-        // group by display + frame
+        // group by display + space + frame. The space keeps same-frame stacks on
+        // different spaces apart, so each gets its own (space-pinned) panel.
         func key(_ w: YabaiWindow) -> String {
-            "\(w.display)|\(Int(w.frame.x))|\(Int(w.frame.y))|\(Int(w.frame.w))|\(Int(w.frame.h))"
+            "\(w.display)|\(w.space)|\(Int(w.frame.x))|\(Int(w.frame.y))|\(Int(w.frame.w))|\(Int(w.frame.h))"
         }
         var groups: [String: [YabaiWindow]] = [:]
         for w in windows { groups[key(w), default: []].append(w) }

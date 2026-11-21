@@ -24,11 +24,12 @@ final class AutoSetupTests: XCTestCase {
         XCTAssertEqual(first.action, "\"/Apps/yst.app/Contents/MacOS/yst\" --refresh")
     }
 
-    func testForceOnlyOnDisplayChanged() {
+    func testForceOnlyOnDisplayAndSpaceChanged() {
+        XCTAssertEqual(SignalInstaller.forceEvents, ["display_changed", "space_changed"])
         let specs = SignalInstaller.specs(appBinaryPath: "/b")
         for spec in specs {
             XCTAssertEqual(spec.action.hasSuffix("--refresh --force"),
-                           spec.event == "display_changed", spec.event)
+                           SignalInstaller.forceEvents.contains(spec.event), spec.event)
         }
     }
 

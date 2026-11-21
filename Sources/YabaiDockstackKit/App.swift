@@ -266,8 +266,8 @@ public enum YabaiDockstack {
             }
         }
 
-        let coordinator = RefreshCoordinator(config: config, client: client) { stacks in
-            renderer.update(stacks)
+        let coordinator = RefreshCoordinator(config: config, client: client) { stacks, rebuild in
+            renderer.update(stacks, rebuild: rebuild)
             dockController?.warmCache()
         }
         coordinator.onWindows = { switcher.noteWindows($0) }
